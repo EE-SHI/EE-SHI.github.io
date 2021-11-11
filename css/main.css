@@ -958,14 +958,14 @@ pre .javascript .function {
 .site-brand-container {
   display: flex;
   flex-shrink: 0;
-  padding: 0px 0px 0px 0px;
+  padding: 0 0px;
 }
 .headband {
   background: #222;
-  height: 3px;
+  height: 0px;
 }
 .site-meta {
-  flex-grow: 0;
+  flex-grow: 1;
   text-align: center;
 }
 @media (max-width: 767px) {
@@ -978,7 +978,7 @@ pre .javascript .function {
   color: var(--brand-color);
   display: inline-block;
   line-height: 1.375em;
-  padding: 0 0 0 0px;
+  padding: 0 40px;
   position: relative;
 }
 .brand:hover {
@@ -992,23 +992,18 @@ pre .javascript .function {
 }
 .site-subtitle {
   color: #ddd;
-  font-size: 0.875em;
+  font-size: 1em;
   margin: 10px 0;
 }
 .use-motion .brand {
   opacity: 0;
 }
 .use-motion .site-title,
-.use-motion .site-subtitle {
-  opacity: 0;
-  position: relative;
-  top: -10px;
-  margin-block-end: 10px;
-}
+.use-motion .site-subtitle,
 .use-motion .custom-logo-image {
   opacity: 0;
   position: relative;
-  margin-block-end: -30px;
+  top: -10px;
 }
 .site-nav-toggle,
 .site-nav-right {
@@ -1173,7 +1168,7 @@ pre .javascript .function {
 }
 .links-of-author a::before,
 .links-of-author span.exturl::before {
-  background: #ff915d;
+  background: #26a3aa;
   border-radius: 50%;
   content: ' ';
   display: inline-block;
@@ -1967,6 +1962,13 @@ pre .javascript .function {
 #qr p {
   text-align: center;
 }
+.post-copyright {
+  background: var(--card-bg-color);
+  border-left: 3px solid #ff2a2a;
+  list-style: none;
+  margin: 2em 0 0;
+  padding: 0.5em 1em;
+}
 .category-all-page .category-all-title {
   text-align: center;
 }
@@ -2352,6 +2354,7 @@ ul.breadcrumb li + li:last-child {
 }
 .custom-logo-image {
   margin-top: 20px;
+  margin-bottom: -30px;
 }
 @media (max-width: 991px) {
   .custom-logo-image {
