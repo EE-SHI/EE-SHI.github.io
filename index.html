@@ -193,6 +193,83 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://haoxiang-shi.github.io/2022/06/04/%E5%8D%95%E6%80%BB%E7%BA%BF%E9%80%9A%E4%BF%A1%E8%B0%83%E8%AF%95%E6%80%BB%E7%BB%93/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/teddy_1.jpg">
+      <meta itemprop="name" content="Meowoo">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="洞见">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2022/06/04/%E5%8D%95%E6%80%BB%E7%BA%BF%E9%80%9A%E4%BF%A1%E8%B0%83%E8%AF%95%E6%80%BB%E7%BB%93/" class="post-title-link" itemprop="url">单总线通信调试总结</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2022-06-04 10:59:57 / 修改时间：22:37:41" itemprop="dateCreated datePublished" datetime="2022-06-04T10:59:57+08:00">2022-06-04</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E6%8A%80%E6%9C%AF/" itemprop="url" rel="index"><span itemprop="name">技术</span></a>
+                </span>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <p>最近调试了一个通过单总线协议与单片机通信的温度传感器，过程中爬了不少坑，尽管有些错误看起来十分低级，但稍不注意还是可能会浪费不少时间，在这里分享出来希望对别人也有所帮助。</p>
+<p>整个系统的结构是所有的外部接口都先连到一个FPGA上，然后FPGA再通过STM32上的FSMC引脚实现与STM32的总线通信。</p>
+<p>调试过程中遇到的第一个问题是上拉电阻的问题。单总线通信需要芯片和传感器的接口可以既用作输入也用作输出。对于STM32来说，GPIO有多种模式用户可以配置，自然不用担心。但是对于温度传感器来说，它没有单片机一样的配置引脚的功能，而作为通信从机它的接口需要既能作为输入也能作为输出，这就限制了它的接口设计，因为作为输入的接口一定需要对外呈现出高阻态。因此，这种单总线通信的从机通常设计成开漏接口。事实上，我们也可以在STM32上选择GPIO的开漏输出模式同时在引脚上加一个上拉电阻来实现输入输出的复用而不用每次通过寄存器切换GPIO的推挽输出和输入模式。对于开漏输出，上拉电阻是不可或缺的。在硬件设计时，我们本以为温度传感器的上拉电阻已经集成在组件上了，但实际测试一番下来才发现组件上没有上拉电阻，因此需要在对外接口之后再加一个上拉电阻才能实现传感器的正常输出高电平。</p>
+<p>第二个问题是电平转换的问题，温度传感器所在的组件采用了5V的数字电平，而FPGA和STM32所在的控制板采用的是3.3V的电平，因此在接口后需要进行一次电平转换。硬件设计的同事之前用过TXB0108双向电平转换芯片，效果还不错，于是这次在硬件设计时也就采用了同样的芯片。但又一个坑就来源于这个芯片的选型，TXB0108不支持开漏接口的输入。换成TXS0108后解决了这个问题。</p>
+<p>但是在后续的测试中，我发现TXS0108作为双向电平转换芯片存在高速情况下阻抗不匹配时信号反射的问题。这里简单讲讲TXS0108的工作原理：TXS0108在芯片输入输出两侧各有两个边沿检测器（上升沿和下降沿），当一侧首先检测到信号边沿后就会被认为是输入端。每一次检测后边沿加速器（one-shot circuit）会工作大约30ns（来自手册，但实测比30ns要短）。<br>虽然用作单总线通信没问题（速率也就是几kHz），但是如果要用作SPI通信，当信号速率提高到2MHz（这个速率可能和阻抗不匹配的程度有关）左右时，TXS0108的边沿检测器就会因为信号反射错误地将输出端识别为输入端，这样就会使得输入输出端出现快速切换（类似自激），输入端上升沿电平在上升到一半（大约20ns左右）后就会因为另一侧被识别为输入端而被错误地认为是输出端从而使得电平停止上升，这样高电平仅能达到大约2V的水平。如果放大来看，高电平部分会出现自激的高频正弦波，周期就是之前提到的20ns。所以如果缺少负载阻抗信息或者是PCB走线比较长而容易出现信号反射时，应该尽可能避免使用这种双向电平转换芯片。</p>
+<p>第三个问题是很低级的问题，那就是组件和控制板没有共地，因为组件和控制板使用不同的电源供电，因此两者其实是不共地的；而在设计时温度传感器也只有一个单总线输出而没有地线输出，因此必须要在电源上将控制板和组件的数字地短接才可以正常使用温度传感器。所以不要相信单总线真的就只用一根线就可以实现通信🤣。</p>
+<p>最后附上实现的代码:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">UT0312_GPIO_Output_Init</span><span class="params">(<span class="keyword">void</span>)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    GPIO_InitTypeDef GPIO_InitStruct = &#123;<span class="number">0</span>&#125;;</span><br><span class="line">    GPIO_InitStruct.Pin = GPIO_PIN_4;</span><br><span class="line">    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;</span><br><span class="line">    GPIO_InitStruct.Pull = GPIO_NOPULL;</span><br><span class="line">    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;</span><br><span class="line">    <span class="built_in">HAL_GPIO_Init</span>(GPIOE, &amp;GPIO_InitStruct);</span><br><span class="line">&#125;</span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">UT0312_GPIO_Input_Init</span><span class="params">(<span class="keyword">void</span>)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    GPIO_InitTypeDef GPIO_InitStruct = &#123;<span class="number">0</span>&#125;;</span><br><span class="line">    GPIO_InitStruct.Pin = GPIO_PIN_4;</span><br><span class="line">    GPIO_InitStruct.Mode = GPIO_MODE_INPUT;</span><br><span class="line">    GPIO_InitStruct.Pull = GPIO_NOPULL;</span><br><span class="line">    <span class="built_in">HAL_GPIO_Init</span>(GPIOE, &amp;GPIO_InitStruct);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">uint8_t</span> <span class="title">UT0312_Init</span><span class="params">(<span class="keyword">void</span>)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="keyword">uint8_t</span> flag;</span><br><span class="line">    <span class="built_in">UT0312_GPIO_Output_Init</span>();</span><br><span class="line">    DQ_HIGH;</span><br><span class="line">    <span class="built_in">delay_us</span>(<span class="number">6</span>);                  <span class="comment">// 6us short delay</span></span><br><span class="line">    DQ_LOW;</span><br><span class="line">    <span class="built_in">delay_us</span>(<span class="number">480</span>);                <span class="comment">// Low level voltage last for about 480~960us.</span></span><br><span class="line">    DQ_HIGH;                      <span class="comment">// Release the data line</span></span><br><span class="line">    <span class="built_in">delay_us</span>(<span class="number">60</span>);                 <span class="comment">// Wait for about 15~60us so that</span></span><br><span class="line">                                  <span class="comment">// UT0312 can send its presence inpulse.</span></span><br><span class="line">    <span class="built_in">UT0312_GPIO_Input_Init</span>();     <span class="comment">// Switch GPIO to input mode</span></span><br><span class="line">    flag = DQ_IN;                 <span class="comment">// Read the status of UT0312.</span></span><br><span class="line">    <span class="built_in">delay_us</span>(<span class="number">420</span>);                <span class="comment">// Wait for about 420us so that the minimum Rx time</span></span><br><span class="line">                                  <span class="comment">// requirement (480=420+60) is met.</span></span><br><span class="line">    <span class="keyword">return</span> flag;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">UT0312_Write_Byte</span><span class="params">(<span class="keyword">uint8_t</span> data)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="built_in">UT0312_GPIO_Output_Init</span>();</span><br><span class="line">    <span class="keyword">for</span> (<span class="keyword">int</span> i=<span class="number">0</span>; i&lt;<span class="number">8</span>; i++) &#123;</span><br><span class="line">        DQ_LOW;</span><br><span class="line">        <span class="built_in">delay_us</span>(<span class="number">2</span>);</span><br><span class="line">        <span class="keyword">if</span> (data &amp; <span class="number">0x01</span>) &#123;</span><br><span class="line">            DQ_HIGH;</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            DQ_LOW;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="built_in">delay_us</span>(<span class="number">60</span>);</span><br><span class="line">        DQ_HIGH;</span><br><span class="line">        data &gt;&gt;= <span class="number">1</span>;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">uint8_t</span> <span class="title">UT0312_Read_Byte</span><span class="params">(<span class="keyword">void</span>)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="keyword">uint8_t</span> data=<span class="number">0</span>;</span><br><span class="line">    <span class="keyword">for</span> (<span class="keyword">int</span> i=<span class="number">0</span>; i&lt;<span class="number">8</span>; i++) &#123;</span><br><span class="line">        data &gt;&gt;= <span class="number">1</span>;</span><br><span class="line">        <span class="built_in">UT0312_GPIO_Output_Init</span>();</span><br><span class="line">        DQ_LOW;</span><br><span class="line">        <span class="built_in">delay_us</span>(<span class="number">2</span>);</span><br><span class="line">        DQ_HIGH;</span><br><span class="line">        <span class="built_in">UT0312_GPIO_Input_Init</span>();</span><br><span class="line">        <span class="keyword">if</span> (DQ_IN == <span class="number">1</span>) &#123;</span><br><span class="line">            data |= <span class="number">0x80</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="built_in">delay_us</span>(<span class="number">60</span>);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">uint8_t</span> <span class="title">UT0312_Temperature</span><span class="params">()</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="keyword">uint8_t</span> MSB=<span class="number">0</span>, MSL=<span class="number">0</span>;</span><br><span class="line">    <span class="keyword">uint8_t</span> res = <span class="number">0</span>;</span><br><span class="line">    <span class="keyword">if</span> (<span class="built_in">UT0312_Init</span>() == <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="built_in">UT0312_Write_Byte</span>(<span class="number">0xCC</span>);    <span class="comment">// skip ROM</span></span><br><span class="line">        <span class="built_in">UT0312_Write_Byte</span>(<span class="number">0x44</span>);    <span class="comment">// start transform</span></span><br><span class="line">        <span class="built_in">UT0312_Init</span>();</span><br><span class="line">        <span class="built_in">UT0312_Write_Byte</span>(<span class="number">0xCC</span>);    <span class="comment">// skip ROM</span></span><br><span class="line">        <span class="built_in">UT0312_Write_Byte</span>(<span class="number">0xBE</span>);    <span class="comment">// read temperature</span></span><br><span class="line">        MSL = <span class="built_in">UT0312_Read_Byte</span>();</span><br><span class="line">        MSB = <span class="built_in">UT0312_Read_Byte</span>();</span><br><span class="line">        res = MSL &lt;&lt; <span class="number">4</span> | MSB &gt;&gt; <span class="number">4</span>;  <span class="comment">// approximation, the negatives neglected.</span></span><br><span class="line">        <span class="keyword">return</span> res;</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="https://haoxiang-shi.github.io/2022/05/21/%E4%B8%80%E7%82%B9%E9%9A%8F%E6%83%B3/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -723,20 +800,20 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">6</span>
+          <span class="site-state-item-count">7</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
       <div class="site-state-item site-state-categories">
             <a href="/categories/">
           
-        <span class="site-state-item-count">2</span>
+        <span class="site-state-item-count">3</span>
         <span class="site-state-item-name">分类</span></a>
       </div>
       <div class="site-state-item site-state-tags">
             <a href="/tags/">
           
-        <span class="site-state-item-count">2</span>
+        <span class="site-state-item-count">3</span>
         <span class="site-state-item-name">标签</span></a>
       </div>
   </nav>
