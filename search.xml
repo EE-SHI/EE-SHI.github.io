@@ -61,21 +61,6 @@
       </tags>
   </entry>
   <entry>
-    <title>基于能量的信号检测</title>
-    <url>/2022/06/04/%E5%9F%BA%E4%BA%8E%E8%83%BD%E9%87%8F%E7%9A%84%E4%BF%A1%E5%8F%B7%E6%A3%80%E6%B5%8B/</url>
-    <content><![CDATA[<h1 id="序言"><a href="#序言" class="headerlink" title="序言"></a>序言</h1><div class="admonition note"><p class="admonition-title">Albert Einstein
-</p><p>As far as the laws of mathematics refer to reality, they are not certain; and as far as they are certain, they do not refer to reality</p>
-</div>
-
-]]></content>
-      <categories>
-        <category>信号处理</category>
-      </categories>
-      <tags>
-        <tag>技术</tag>
-      </tags>
-  </entry>
-  <entry>
     <title>单总线通信调试总结</title>
     <url>/2022/06/04/%E5%8D%95%E6%80%BB%E7%BA%BF%E9%80%9A%E4%BF%A1%E8%B0%83%E8%AF%95%E6%80%BB%E7%BB%93/</url>
     <content><![CDATA[<p>最近调试了一个通过单总线协议与单片机通信的温度传感器，过程中爬了不少坑，尽管有些错误看起来十分低级，但稍不注意还是可能会浪费不少时间，在这里分享出来希望对别人也有所帮助。</p>
